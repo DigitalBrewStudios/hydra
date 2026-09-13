@@ -5,5 +5,4 @@ hydra-builder: ./foreman/start-builder.sh
 hydra-ad-hoc: ./foreman/start-ad-hoc.sh
 hydra-notify: ./foreman/start-notify.sh
 hydra-server: ./foreman/start-hydra.sh
-manual: ./foreman/start-manual.sh
 postgres: ./foreman/start-postgres.sh
