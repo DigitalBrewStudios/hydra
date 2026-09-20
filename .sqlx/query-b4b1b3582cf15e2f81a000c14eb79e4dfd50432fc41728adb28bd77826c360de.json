@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE Builds\n         SET finished = 1, buildStatus = $2, startTime = $3, stopTime = $3\n         WHERE id = ANY($1) AND finished = 0\n         RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4Array",
+        "Int4",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b4b1b3582cf15e2f81a000c14eb79e4dfd50432fc41728adb28bd77826c360de"
+}

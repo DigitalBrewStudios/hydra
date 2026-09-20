@@ -27,6 +27,7 @@ use db::models::{BuildID, BuildStatus};
 use sqlx::Connection as _;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use crate::disconnect::{HandshakeOnDisconnect, InflightBuilds};
 use crate::logs::{LogSource, build_log_stream};
 use crate::queries::{FinishedBuild, get_finished_build};
 use crate::submit::{AdhocSubmitter, BuildRequest};
@@ -36,7 +37,9 @@ use crate::waiter::BuildWaiter;
 ///
 /// Read operations and store uploads are proxied to an upstream
 /// nix-daemon; build requests become Hydra `Builds` rows filed by
-/// [`AdhocSubmitter`].
+/// [`AdhocSubmitter`]. Builds a connection files are tracked by its
+/// [`InflightBuilds`] (set up by [`HandshakeOnDisconnect`]), so they
+/// can be cancelled if the client exits before they finish.
 #[derive(Clone)]
 pub(crate) struct HydraDaemonHandler {
     store_dir: StoreDir,
@@ -45,6 +48,8 @@ pub(crate) struct HydraDaemonHandler {
     waiter: BuildWaiter,
     submitter: AdhocSubmitter,
     logs: LogSource,
+    /// Set per connection by [`HandshakeOnDisconnect::handshake_on_disconnect`].
+    inflight: Option<InflightBuilds>,
 }
 
 impl std::fmt::Debug for HydraDaemonHandler {
@@ -76,6 +81,7 @@ impl HydraDaemonHandler {
             waiter,
             submitter,
             logs,
+            inflight: None,
         }
     }
 
@@ -197,6 +203,13 @@ impl HydraDaemonHandler {
         }
         .await;
 
+        // The build's fate is known, so the client-exit machinery has
+        // nothing left to cancel for it.
+        if let Some(inflight) = &self.inflight {
+            inflight.remove(build_id).await;
+        } else {
+            tracing::debug!(build_id, "no in-flight registry; handshake did not set one up");
+        }
         if result.is_err() {
             self.waiter.forget(build_id).await;
         }
@@ -279,12 +292,18 @@ impl HydraDaemonHandler {
             .map_err(|e| ProtocolError::custom(format!("submit build: {e}")))?;
 
         // Register before commit so the queue runner cannot finish the
-        // row before anyone is listening for it.
+        // row before anyone is listening for it, and so a client that
+        // exits in between cannot leave the row untracked.
         let rx = self
             .waiter
             .register(build_id)
             .await
             .map_err(|e| ProtocolError::custom(format!("cannot schedule build: {e}")))?;
+        if let Some(inflight) = &self.inflight {
+            inflight.register(build_id).await;
+        } else {
+            tracing::debug!(build_id, "no in-flight registry; handshake did not set one up");
+        }
 
         // Tell the log stream before the commit that makes the row
         // visible, so no step of this build can be announced first.
@@ -303,6 +322,9 @@ impl HydraDaemonHandler {
         .await;
         if let Err(e) = committed {
             self.waiter.forget(build_id).await;
+            if let Some(inflight) = &self.inflight {
+                inflight.remove(build_id).await;
+            }
             return Err(e);
         }
         Ok((build_id, rx))
@@ -405,6 +427,18 @@ fn build_status_message(status: BuildStatus) -> &'static str {
         BuildStatus::NotDeterministic => "build is not deterministic",
         BuildStatus::Busy => "build is still in progress",
         BuildStatus::Resolved => "CA derivation resolved (transient state)",
+    }
+}
+
+impl HandshakeOnDisconnect for HydraDaemonHandler {
+    fn handshake_on_disconnect(
+        mut self,
+        gone: watch::Receiver<bool>,
+    ) -> impl ResultLog<Output = DaemonResult<Self::Store>> + Send {
+        let inflight = InflightBuilds::new(self.db.clone(), self.waiter.clone());
+        inflight.spawn_canceller(gone);
+        self.inflight = Some(inflight);
+        ready(Ok(self)).empty_logs()
     }
 }
 

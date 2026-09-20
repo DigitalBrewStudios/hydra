@@ -2,17 +2,20 @@
 // Derived from harmonia-daemon::server (EUPL-1.2 OR MIT).
 
 use std::fmt::Debug;
+use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::pin::pin;
+use std::sync::Arc;
 
 use futures::{FutureExt, StreamExt as _};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, copy_buf};
 use tokio::net::UnixListener;
-use tracing::{debug, error, info};
+use tokio::sync::watch;
+use tracing::{debug, error, info, warn};
 
 use harmonia_protocol::ProtocolVersion;
 use harmonia_protocol::daemon::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog,
+    DaemonError, DaemonResult, DaemonStore, ResultLog,
     wire::{
         CLIENT_MAGIC, FramedReader, IgnoredOne, SERVER_MAGIC,
         logger::RawLogMessage,
@@ -26,6 +29,8 @@ use harmonia_protocol::ser::{NixWrite, NixWriter};
 use harmonia_protocol::version::{FeatureSet, PROTOCOL_VERSION, supported_features};
 use harmonia_store_path::StoreDir;
 use harmonia_utils_io::{AsyncBufReadCompat, BytesReader};
+
+use crate::disconnect::{DisconnectWatcher, HandshakeOnDisconnect, wait_client_gone};
 
 const NIX_VERSION: &str = "2.24.0 (Hydra)";
 
@@ -90,6 +95,13 @@ where
 struct DaemonConnection<R, W> {
     reader: NixReader<BytesReader<R>>,
     writer: NixWriter<W>,
+    /// A duplicate of the client socket, for the hangup watchers of
+    /// build requests. `None` when the duplicate could not be made;
+    /// builds then rely on the connection ending some other way.
+    watch_fd: Option<OwnedFd>,
+    /// Fired by a hangup watcher when the client exits mid-build.
+    gone_tx: Arc<watch::Sender<bool>>,
+    gone_rx: watch::Receiver<bool>,
 }
 
 impl<R, W> DaemonConnection<R, W>
@@ -153,6 +165,40 @@ where
         let value = process_logs(&mut self.writer, logs).await?;
         self.writer.write_value(&RawLogMessage::Last).await?;
         Ok(value)
+    }
+
+    /// Stream a build request's logs to the client, but give up as
+    /// soon as the client exits while it waits.
+    ///
+    /// Builds must not outlive the client that asked for them. The
+    /// hangup watcher started here notices the client leaving and
+    /// fires the connection's `gone` signal; this request then fails
+    /// instead of streaming on, and the connection's canceller (see
+    /// `InflightBuilds`) marks whatever the connection filed as
+    /// cancelled.
+    async fn process_build_logs<'s, T: Send + 's, L>(
+        &'s mut self,
+        logs: L,
+    ) -> Result<T, RecoverableError>
+    where
+        L: ResultLog<Output = DaemonResult<T>> + Send + 's,
+    {
+        let watcher = match &self.watch_fd {
+            Some(fd) => DisconnectWatcher::spawn(fd, Arc::clone(&self.gone_tx)),
+            None => DisconnectWatcher::dead(),
+        };
+        let mut gone = self.gone_rx.clone();
+        let res = tokio::select! {
+            res = self.process_logs_write(logs) => res,
+            _ = wait_client_gone(&mut gone) => {
+                return Err(RecoverableError {
+                    can_recover: false,
+                    source: DaemonError::custom("client exited mid-build"),
+                });
+            }
+        };
+        drop(watcher);
+        res
     }
 
     async fn process_requests<'s, S>(&'s mut self, mut store: S) -> Result<(), DaemonError>
@@ -243,7 +289,7 @@ where
             }
             BuildPaths(req) => {
                 let logs = store.build_paths(&req.paths, req.mode);
-                self.process_logs_write(logs).await?;
+                self.process_build_logs(logs).await?;
                 self.writer.write_value(&IgnoredOne).await?;
             }
             EnsurePath(path) => {
@@ -309,7 +355,7 @@ where
             BuildDerivation(req) => {
                 let (drv_path, drv) = &req.drv;
                 let logs = store.build_derivation(drv_path, drv, req.mode);
-                let value = self.process_logs_write(logs).await?;
+                let value = self.process_build_logs(logs).await?;
                 self.writer.write_value(&value).await?;
             }
             AddSignatures(req) => {
@@ -393,7 +439,7 @@ where
             }
             BuildPathsWithResults(req) => {
                 let logs = store.build_paths_with_results(&req.paths, req.mode);
-                let value = self.process_logs_write(logs).await?;
+                let value = self.process_build_logs(logs).await?;
                 self.writer.write_value(&value).await?;
             }
             AddPermRoot(req) => {
@@ -426,7 +472,7 @@ pub(crate) struct DaemonServer<H> {
 
 impl<H> DaemonServer<H>
 where
-    H: HandshakeDaemonStore + Clone + Send + Sync + 'static,
+    H: HandshakeOnDisconnect + Clone + Send + Sync + 'static,
 {
     /// Create the socket at `socket_path`, replacing any stale one.
     pub(crate) fn bind(
@@ -479,12 +525,32 @@ where
             let store_dir = self.store_dir.clone();
 
             tokio::spawn(async move {
+                // A duplicate of the client socket for the hangup
+                // watchers: it keeps the file description alive for
+                // their thread regardless of what the async halves do.
+                // Made before anything consumes the stream.
+                let watch_fd = match nix::unistd::dup(&stream) {
+                    Ok(fd) => Some(fd),
+                    Err(e) => {
+                        warn!("cannot watch this client for exits: {e}");
+                        None
+                    }
+                };
+                let (gone_tx, _) = watch::channel(false);
+                let gone_tx = Arc::new(gone_tx);
+
                 let (reader, writer) = stream.into_split();
                 let reader = NixReader::builder()
                     .set_store_dir(&store_dir)
                     .build_buffered(reader);
                 let writer = NixWriter::builder().set_store_dir(&store_dir).build(writer);
-                let mut conn = DaemonConnection { reader, writer };
+                let mut conn = DaemonConnection {
+                    reader,
+                    writer,
+                    watch_fd,
+                    gone_tx: gone_tx.clone(),
+                    gone_rx: gone_tx.subscribe(),
+                };
 
                 if let Err(e) = conn.handshake().await {
                     error!("handshake error: {e:?}");
@@ -492,7 +558,7 @@ where
                 }
 
                 let store = {
-                    let logs = handler.handshake();
+                    let logs = handler.handshake_on_disconnect(gone_tx.subscribe());
                     let mut logs = std::pin::pin!(logs);
                     while let Some(msg) = futures::StreamExt::next(&mut logs).await {
                         if let Err(e) = conn.writer.write_value(&log_to_raw(msg)).await {

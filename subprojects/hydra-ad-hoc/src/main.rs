@@ -22,8 +22,14 @@
 //!
 //! Such a request carries no context, so every build it asks for is
 //! filed under one hidden `adhoc/adhoc` jobset (see [`AdhocSubmitter`]).
+//!
+//! A client cannot tell the daemon to stop a build it is waiting on,
+//! but exiting does the job: the daemon watches the connection for a
+//! client that leaves mid-build and cancels what it filed, so the
+//! queue runner stops building for nobody (see [`disconnect`]).
 
 mod config;
+mod disconnect;
 mod handler;
 mod logs;
 mod queries;

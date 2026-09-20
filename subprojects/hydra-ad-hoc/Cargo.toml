@@ -15,6 +15,7 @@ color-eyre.workspace   = true
 fs-err.workspace       = true
 futures.workspace      = true
 hydra-tracing          = { workspace = true }
+jiff.workspace         = true
 listenfd.workspace     = true
 sd-notify.workspace    = true
 secrecy                = { workspace = true, features = [ "serde" ] }
@@ -32,6 +33,8 @@ harmonia-store-derivation.workspace      = true
 harmonia-store-path.workspace            = true
 harmonia-store-remote.workspace          = true
 harmonia-utils-io.workspace              = true
+# dup (fs), poll and recv MSG_PEEK (socket) for the client hangup watcher.
+nix                                      = { workspace = true, features = [ "fs", "poll", "socket" ] }
 
 [features]
 otel = [ "hydra-tracing/otel" ]

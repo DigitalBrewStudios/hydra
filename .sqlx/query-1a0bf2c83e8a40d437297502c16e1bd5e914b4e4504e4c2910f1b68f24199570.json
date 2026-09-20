@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT finished, buildStatus, startTime, stopTime\n             FROM Builds WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "finished",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "finished"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "buildstatus",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "buildstatus"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "starttime",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "starttime"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "stoptime",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "stoptime"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1a0bf2c83e8a40d437297502c16e1bd5e914b4e4504e4c2910f1b68f24199570"
+}
