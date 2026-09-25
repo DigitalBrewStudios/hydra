@@ -137,10 +137,6 @@
     </li>
   [% ELSE %]
     [% WRAPPER makeSubMenu title="Sign in" id="sign-in-menu" align="right" %]
-      [% IF c.config.github_client_id %]
-        <a class="dropdown-item" href="/github-redirect?after=[% c.req.path | uri %]">Sign in with GitHub</a>
-        <div class="dropdown-divider"></div>
-      [% END %]
       <a class="dropdown-item" href="#hydra-signin" data-toggle="modal">Sign in with a Hydra account</a>
     [% END %]
   [% END %]

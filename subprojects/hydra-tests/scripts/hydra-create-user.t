@@ -84,12 +84,6 @@ subtest "Handling password and password hash creation" => sub {
             isnt($res, 0, "hydra-create-user should exit non-zero with conflicting " . join(" ", @{$case}));
         }
     };
-
-    subtest "A password is not required for creating a Github-based account" => sub {
-        my ($res, $stdout, $stderr) = captureStdoutStderr(15, (
-            "hydra-create-user", "github-account", "--type", "github"));
-        is($res, 0, "hydra-create-user should exit zero");
-    };
 };
 
 done_testing;

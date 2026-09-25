@@ -12,7 +12,7 @@ sub showHelp {
     print q%
 Usage: hydra-create-user NAME
   [--rename-from NAME]
-  [--type hydra|github]
+  [--type hydra]
   [--full-name FULLNAME]
   [--email-address EMAIL-ADDRESS]
   [--password-prompt]
@@ -99,8 +99,8 @@ if ($chosenPasswordOptions > 1) {
     die "$0: please specify only one of --password-prompt or --password-hash. See --help for more information.\n";
 }
 
-die "$0: type must be `hydra' or `github'\n"
-    if defined $type && $type ne "hydra" && $type ne "github";
+die "$0: type must be `hydra'\n"
+    if defined $type && $type ne "hydra";
 
 my $db = Hydra::Model::DB->new();
 
@@ -117,58 +117,43 @@ $db->txn_do(sub {
             { username => $userName, type => "hydra", emailaddress => "", password => "!" });
     }
 
-    die "$0: GitHub user names must be email addresses\n"
-        if ($user->type eq "github") && $userName !~ /\@/;
-
     $user->update({ type => $type }) if defined $type;
 
     $user->update({ fullname => $fullName eq "" ? undef : $fullName }) if defined $fullName;
 
-    if ($user->type eq "github") {
-        die "$0: GitHub accounts do not have an explicitly set email address.\n"
-            if defined $emailAddress;
-        die "$0: GitHub accounts do not have a password.\n"
-            if defined $password;
-        die "$0: GitHub accounts do not have a password.\n"
-            if defined $passwordHash;
-        die "$0: GitHub accounts do not have a password.\n"
-            if defined $passwordPrompt;
-        $user->update({ emailaddress => $userName, password => "!" });
-    } else {
-        $user->update({ emailaddress => $emailAddress }) if defined $emailAddress;
+		$user->update({ emailaddress => $emailAddress }) if defined $emailAddress;
 
-        if (defined $password) {
-            # !!! TODO: Remove support for plaintext passwords in 2023.
-            print STDERR "Submitting plaintext passwords as arguments is deprecated and will be removed. See --help for alternatives.\n";
-            $user->setPassword($password);
-        }
+		if (defined $password) {
+				# !!! TODO: Remove support for plaintext passwords in 2023.
+				print STDERR "Submitting plaintext passwords as arguments is deprecated and will be removed. See --help for alternatives.\n";
+				$user->setPassword($password);
+		}
 
-        if (defined $passwordHash) {
-            $user->setPasswordHash($passwordHash);
-        }
+		if (defined $passwordHash) {
+				$user->setPasswordHash($passwordHash);
+		}
 
-        if (defined $passwordPrompt) {
-            ReadMode 2;
-            print STDERR "Password: ";
-            my $password = <STDIN> // "";
-            chomp $password;
+		if (defined $passwordPrompt) {
+				ReadMode 2;
+				print STDERR "Password: ";
+				my $password = <STDIN> // "";
+				chomp $password;
 
-            print STDERR "\nPassword Confirmation: ";
-            my $passwordConfirm = <STDIN> // "";
-            chomp $passwordConfirm;
-            ReadMode 0;
+				print STDERR "\nPassword Confirmation: ";
+				my $passwordConfirm = <STDIN> // "";
+				chomp $passwordConfirm;
+				ReadMode 0;
 
-            print STDERR "\n";
+				print STDERR "\n";
 
-            if ($password ne $passwordConfirm) {
-                die "Passwords don't match."
-            } elsif ($password eq "") {
-                die "Password cannot be empty."
-            }
+				if ($password ne $passwordConfirm) {
+						die "Passwords don't match."
+				} elsif ($password eq "") {
+						die "Password cannot be empty."
+				}
 
-            $user->setPassword($password);
-        }
-    }
+				$user->setPassword($password);
+		}
 
     $user->userroles->delete if $wipeRoles;
     $user->userroles->update_or_create({ role => $_ }) foreach @roles;

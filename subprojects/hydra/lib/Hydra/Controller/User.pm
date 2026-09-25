@@ -24,7 +24,6 @@ sub login :Local :Args(0) :ActionClass('REST') { }
 
 sub login_POST {
     my ($self, $c) = @_;
-
     my $username = $c->stash->{params}->{username} // "";
     my $password = $c->stash->{params}->{password} // "";
 
@@ -136,68 +135,6 @@ sub doEmailLogin {
     $self->status_no_content($c);
     $c->flash->{successMsg} = "You are now signed in as <tt>" . encode_entities($email) . "</tt>.";
 }
-
-sub github_login :Path('/github-login') Args(0) {
-    my ($self, $c) = @_;
-
-    my $client_id = $c->config->{github_client_id} or die "github_client_id not configured.";
-    my $client_secret = $c->config->{github_client_secret} // do {
-        my $client_secret_file = $c->config->{github_client_secret_file} or die "github_client_secret nor github_client_secret_file is configured.";
-        my $client_secret = read_text($client_secret_file);
-        $client_secret =~ s/\s+//;
-        $client_secret;
-    };
-    die "No github secret configured" unless $client_secret;
-
-    my $ua = LWP::UserAgent->new();
-    my $response = $ua->post(
-        'https://github.com/login/oauth/access_token',
-        {
-            client_id => $client_id,
-            client_secret => $client_secret,
-            code => ($c->req->params->{code} // die "No token."),
-        }, Accept => 'application/json');
-    error($c, "Did not get a response from GitHub.") unless $response->is_success;
-
-    my $data = decode_json($response->decoded_content) or die;
-    my $access_token = $data->{access_token} // die "No access_token in response from GitHub.";
-
-    $response = $ua->get('https://api.github.com/user/emails', Accept => 'application/vnd.github.v3+json', Authorization => "token $access_token");
-    error($c, "Did not get a response from GitHub for email info.") unless $response->is_success;
-
-    $data = decode_json($response->decoded_content) or die;
-    my $email;
-
-    foreach my $eml (@{$data}) {
-        $email = $eml->{email} if $eml->{verified} && $eml->{primary};
-    }
-
-    die "No primary email for this GitHub profile" unless $email;
-
-    $response = $ua->get('https://api.github.com/user', Authorization => "token $access_token");
-    error($c, "Did not get a response from GitHub for user info.") unless $response->is_success;
-    $data = decode_json($response->decoded_content) or die;
-
-    doEmailLogin($self, $c, "github", $email, $data->{name} // undef);
-
-    $c->res->redirect($c->uri_for($c->res->cookies->{'after_github'}));
-}
-
-sub github_redirect :Path('/github-redirect') Args(0) {
-    my ($self, $c) = @_;
-
-    my $client_id = $c->config->{github_client_id} or die "github_client_id not configured.";
-
-    my $after = "/" . $c->req->params->{after};
-
-    $c->res->cookies->{'after_github'} = {
-        name => 'after_github',
-        value => $after,
-    };
-
-    $c->res->redirect("https://github.com/login/oauth/authorize?client_id=$client_id&scope=user:email");
-}
-
 
 sub captcha :Local Args(0) {
     my ($self, $c) = @_;
