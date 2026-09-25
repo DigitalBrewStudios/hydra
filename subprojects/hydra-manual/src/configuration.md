@@ -198,6 +198,19 @@ Each build step the queue runner dispatches appears as a build activity, and the
 So `nix build -L` shows the log live, and `--log-format bar-with-logs` does the same for the classic commands.
 The daemon reads the logs from `hydraDataDir`, so it has to run on the same host as the queue runner.
 
+Authentification (experimential)
+--------------------------------------
+
+Hydra-auth is a new experimential rust drop-in replacement to how hydra-web (perl) handles authentification between plugins and user authentification.
+It features OIDC, LDAP, SAML intergration with hydra, ability to configure hydra secrets securely using a path and more.
+
+This services creates a grpc socket to communicate with the hydra-web application & respective Hydra components that need authentication securely using mTLS or a message-level token.
+
+The service reads `/etc/hydra/auth.toml`, genereated from `services.hydra-auth.settings` (`plugins` (Hydra Plugins), `providers`)
+The defaults suit a single-host install.
+
+To communicate with the authentification
+
 Using LDAP as authentication backend (optional)
 -----------------------------------------------
 

@@ -1941,6 +1941,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "hydra-auth"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "color-eyre",
+ "db",
+ "fs-err",
+ "hydra-tracing",
+ "secrecy",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "hydra-builder"
 version = "0.1.0"
 dependencies = [

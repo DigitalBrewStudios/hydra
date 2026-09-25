@@ -1,0 +1,7 @@
+dbUrl = ""
+
+[providers.github]
+name = "Github"
+type = "Github"
+clientId = ""
+clientSecret = ""

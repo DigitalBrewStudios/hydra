@@ -38,5 +38,6 @@ self': {
     hydra-evaluator
     hydra-ws
     hydra-ad-hoc
+    hydra-auth
     ;
 }

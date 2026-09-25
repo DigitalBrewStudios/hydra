@@ -1,0 +1,25 @@
+[package]
+name                   = "hydra-auth"
+edition                = "2024"
+rust-version.workspace = true
+version.workspace      = true
+
+[dependencies]
+clap                 = { workspace = true, features = [ "derive" ] }
+color-eyre.workspace = true
+db.workspace         = true
+fs-err               = { workspace = true, features = [ "tokio" ] }
+hydra-tracing        = { workspace = true }
+secrecy              = { workspace = true, features = [ "serde" ] }
+serde                = { workspace = true, features = [ "derive" ] }
+sqlx                 = { workspace = true, features = [ "runtime-tokio", "postgres" ] }
+thiserror.workspace  = true
+tokio                = { workspace = true, features = [ "full" ] }
+toml.workspace       = true
+tracing.workspace  = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[features]
+otel = [ "hydra-tracing/otel" ]

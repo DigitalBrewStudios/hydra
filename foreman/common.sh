@@ -8,6 +8,7 @@ HYDRA_PROMETHEUS_PORT=64445
 HYDRA_QUEUE_RUNNER_REST_PORT=64446
 HYDRA_WS_PORT=9283
 HYDRA_QUEUE_RUNNER_GRPC_PORT=50051
+HYDRA_AUTH_GRPC_PORT=8081
 
 # Paths
 HYDRA_DATA=$(pwd)/.hydra-data
@@ -32,6 +33,10 @@ export PERL5LIB=$(pwd)/subprojects/hydra/lib:$PERL5LIB
 
 wait_for_postgres() {
     while ! pg_isready -h "$HYDRA_PG_SOCKET_DIR" -p "$HYDRA_PG_PORT"; do sleep 1; done
+}
+
+wait_for_auth_backend() {
+  while ! nc -z ::1 "$HYDRA_AUTH_PORT" 2>/dev/null; do sleep 1; done
 }
 
 wait_for_hydra_server() {

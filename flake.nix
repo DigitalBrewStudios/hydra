@@ -181,6 +181,8 @@
 
         adHoc = forEachSystem (system: packages.${system}.hydra-ad-hoc);
 
+        auth = forEachSystem (system: packages.${system}.hydra-auth);
+
         nixosTests = import ./nixos-tests {
           inherit nixpkgs nixosModules;
           forEachSystem = forEachLinuxSystem;
@@ -267,6 +269,7 @@
               hydra-builder
               hydra-evaluator
               hydra-ad-hoc
+              hydra-auth
               hydra-cargo-deps
               ;
           };

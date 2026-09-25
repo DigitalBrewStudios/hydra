@@ -5,6 +5,7 @@ members = [
     "subprojects/hydra-ad-hoc",
     "subprojects/hydra-evaluator",
     "subprojects/hydra-queue-runner",
+    "subprojects/hydra-auth",
     "subprojects/hydra-ws",
     "subprojects/crates/*",
 ]
